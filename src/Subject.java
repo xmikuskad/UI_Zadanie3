@@ -25,13 +25,16 @@ public class Subject {
 
 class Gene {
 	int x,y;
+	int rotation;
 	
-	public Gene(int x,int y)
+	public Gene(int x,int y, int rotation)
 	{
 		this.x = x;
 		this.y = y;
+		this.rotation = rotation;
 	}
 	
 	public int getY() {	return y;}
 	public int getX() { return x;}
+	public int getRotation() {	return rotation;}
 }
