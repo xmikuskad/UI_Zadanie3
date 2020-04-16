@@ -3,7 +3,7 @@ import java.util.Scanner;
 public class MyMain {
 
 	public static void main(String[] args) {
-		int width, height;
+		int width, height, stoneCount = 0;
 		int STONE_CHARACTER = 'k';
 		Evolver evolver = new Evolver();
 		
@@ -22,12 +22,13 @@ public class MyMain {
 			for(int j=0;j<width;j++)
 			{
 				initialMap[i][j]= scanner.nextInt(); 
+				if(initialMap[i][j] == -1)	stoneCount++;
 			}
 		}
 		
 		scanner.close();
 
-		evolver.InitEvolve(initialMap, height,width);
+		evolver.initEvolve(initialMap, height,width,stoneCount);
 	}
 
 }

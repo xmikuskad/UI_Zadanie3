@@ -1,9 +1,10 @@
 import java.util.ArrayList;
 import java.util.List;
 
-public class Subject {
+public class Subject implements Comparable<Subject>{
 
 	List<Gene> geneList = new ArrayList<>();
+	int fitness;
 
 	public List<Gene> getGeneList() {
 		return geneList;
@@ -19,6 +20,25 @@ public class Subject {
 	public void changeGene(Gene gene, int position)
 	{
 		geneList.set(position, gene);
+	}
+	
+	public Gene getGene(int index)
+	{
+		return geneList.get(index);
+	}
+
+	public int getFitness() {
+		return fitness;
+	}
+
+	public void setFitness(int fitness) {
+		this.fitness = fitness;
+	}
+
+	//Funkcia sluzi na porovnavanie, ktory jedinec ma vacsiu fitness funkciu
+	@Override
+	public int compareTo(Subject o) {
+		return o.getFitness() - getFitness();  
 	}
 	
 }
