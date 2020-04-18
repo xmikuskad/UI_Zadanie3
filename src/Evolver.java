@@ -1,8 +1,12 @@
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 import java.util.Random;
 
 public class Evolver {
@@ -12,15 +16,13 @@ public class Evolver {
 	List<Subject> actualGen;
 	List<Gene> geneList;
 	
-	//nacitat z konfigu
-	boolean PRINT_DEBUG = false;
-	int generationCount =100;
-	int geneCount; 
-	int eliteCount = 5;
-	double mutationRate = 0.1;
-	int repeatCount = 500;
+	
+	//nacitanie z konfigu
+	int generationCount,geneCount,eliteCount,repeatCount;
+	double mutationRate;
 	
 	static final int UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, NOT_FOUND = -1;
+	static final boolean PRINT_DEBUG = false;
 	
 	public void initEvolve(int[][] map,int height, int width, int stoneCount)
 	{
@@ -29,8 +31,36 @@ public class Evolver {
 		this.stoneCount = stoneCount;
 		initialMap = map;
 		
+		if(!loadConfig()) {
+			System.out.println("Loading config failed.");
+			return;
+		}
+		
 		startEvolve(true, "first_method.csv");		
 		startEvolve(false, "second_method.csv");		
+	}
+	
+	private boolean loadConfig()
+	{
+		try {
+
+			InputStream inputStream = new FileInputStream("src/config.properties");
+            Properties properties = new Properties();
+
+            properties.load(inputStream);
+            
+            generationCount = Integer.valueOf(properties.getProperty("population_size"));
+            eliteCount = Integer.valueOf(properties.getProperty("elite_count"));
+            repeatCount = Integer.valueOf(properties.getProperty("repeat_count"));
+            mutationRate = Double.valueOf(properties.getProperty("mutation_rate"));
+            
+            return true;
+
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+		
+		return false;
 	}
 	
 	
@@ -38,10 +68,9 @@ public class Evolver {
 	{
 		int sumFitness = 0;
 		
-		//Zapisovanie do csv
+		//Priprava na zapisovanie do csv suboru
 		StringBuilder sb = new StringBuilder();
 		sb.append("Priemer,Maximum\n");
-
 		
 		//Vytvorenie prvej generacie
 		geneCount = width + height/4 + stoneCount; 
@@ -163,7 +192,6 @@ public class Evolver {
 		
 		int randomIndex = random.nextInt() % max;
 		int actIndex = 0;
-		int iterator = generationCount;
 		
 		for (Subject subject : actualGen) {
 			actIndex+=generationCount;
@@ -220,7 +248,7 @@ public class Evolver {
 			
 		for(int i=0; i<generationCount; i++)
 		{
-			final Random random = new Random();
+			//final Random random = new Random();
 			Subject newSubject = new Subject();
 			Collections.shuffle(geneList); //Nahodne ich pomiesa
 			
