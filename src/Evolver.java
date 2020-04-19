@@ -20,6 +20,7 @@ public class Evolver {
 	//nacitanie z konfigu
 	int generationCount,geneCount,eliteCount,repeatCount;
 	double mutationRate;
+	int stuckFactor;
 	
 	static final int UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3, NOT_FOUND = -1;
 	static final boolean PRINT_DEBUG = false;
@@ -30,6 +31,8 @@ public class Evolver {
 		this.width = width;
 		this.stoneCount = stoneCount;
 		initialMap = map;
+		
+		if(stuckFactor < 15) stuckFactor = 15; //Aby som nepridaval prilis casto veci
 		
 		if(!loadConfig()) {
 			System.out.println("Loading config failed.");
@@ -54,6 +57,7 @@ public class Evolver {
             repeatCount = Integer.valueOf(properties.getProperty("repeat_count"));
             mutationRate = Double.valueOf(properties.getProperty("mutation_rate"));
             
+            stuckFactor = repeatCount / 10;
             return true;
 
         } catch (IOException ex) {
@@ -78,7 +82,7 @@ public class Evolver {
 		actualGen = createFirstGeneration();
 		
 		for (Subject subject : actualGen) {
-			int fitness = getFitness(subject, initialMap);
+			int fitness = getFitness(subject, initialMap,false);
 			subject.setFitness(fitness);
 			sumFitness+=fitness;
 		}
@@ -87,27 +91,44 @@ public class Evolver {
 		Collections.sort(actualGen);
 		printStatus(sb);
 		System.out.println("Initial gen done");
+		int maxFitness = actualGen.get(0).getFitness(); //tato premenna sluzi na sledovanie, ci sa generacia vyvija
+		int counter = 0;
 		
 		//Vykonava cyklus celej evolucie
 		for(int i=0;i<repeatCount;i++)
 		{
 			actualGen = createGeneration(sumFitness,firstMethod);
+			
+			counter = checkStuckStatus(counter); //Kontrolujeme, ze nie sme zaseknuty a zlepsujeme sa
+			
 			sumFitness = 0;
 			for (Subject subject : actualGen) {
-				int fitness = getFitness(subject, initialMap);
+				int fitness = getFitness(subject, initialMap,false);
 				subject.setFitness(fitness);
 				sumFitness+=fitness;
 			}
 			
 			//Zoradenie podla fitness
 			Collections.sort(actualGen);
-			//System.out.println("Generation "+(i+1)+" - Max fitness: "+actualGen.get(0).getFitness()+"\n\n");
+			
+			//Osetrenie, aby sme zlepsili sancu na najdenie optimalneho vysledku
+			if(actualGen.get(0).getFitness() > maxFitness) {
+				maxFitness = actualGen.get(0).getFitness();
+				counter = 0;
+			}
+			else {
+				counter++;
+			}
 			
 			if(i%5 == 0)
 			{
 				printStatus(sb);
 			}
 		}
+		
+		//Pouzijem nesikovne na vypis najlepsieho jedinca
+		getFitness(actualGen.get(0),initialMap,true);
+		
 		
 		//Zapis do csv suboru
 		try {
@@ -119,6 +140,31 @@ public class Evolver {
 		}
 	}
 	
+	private int checkStuckStatus(int counter)
+	{
+		if(counter > stuckFactor && actualGen.get(0).getFitness() < width*height-stoneCount) {			
+			System.out.println("ADDED NEW SUBJECTS!");
+			//Vymanazanie najslabsich jedincov
+			for(int it=0;it<generationCount/10;it++) {
+				actualGen.remove(actualGen.size()-1);
+			}
+			
+			//Pridanie novych jedincov na zmenu
+			for(int it=0;it<generationCount/10;it++) {
+				Subject newSubject = new Subject();
+				Collections.shuffle(geneList); //Nahodne ich pomiesa
+				
+				for(int j =0; j<geneCount;j++)
+				{				
+					newSubject.addGene(geneList.get(j));
+				}
+				actualGen.add(newSubject);
+			}
+			return 0;
+		}
+		return counter;
+	}
+	
 	private void printStatus(StringBuilder sb)
 	{
 		double average = 0;
@@ -126,7 +172,7 @@ public class Evolver {
 			average+=subject.getFitness();
 		}
 		average/=generationCount;
-		System.out.println("Average: "+average+" | Max: "+actualGen.get(0).getFitness());
+		System.out.println("Average: "+average+" | Max: "+actualGen.get(0).getFitness()*1.0);
 		
 		sb.append(average);
 		sb.append(",");
@@ -144,22 +190,22 @@ public class Evolver {
 		
 		List<Subject> newGenerationList = new ArrayList<Subject>();
 		
-		if(firstMethod) {
-			//Elitarstvo
-			for(int i=0;i<eliteCount;i++)
-			{
-				newGenerationList.add(actualGen.get(i));
-			}
-			
+		//Elitarstvo
+		for(int i=0;i<eliteCount;i++)
+		{
+			newGenerationList.add(actualGen.get(i));
+		}
+		
+		if(firstMethod) {			
 			//Nova generacia pomocou rulety
 			while(newGenerationList.size() < generationCount) {
 				newGenerationList.add(getEvolvedSubject(getRouletteSubject(sumFitness), getRouletteSubject(sumFitness)));
 			}
 		}
 		else {
-			//Vyber podla poradia bez elitarstva
+			//Vyber pomocou turnaju
 			while(newGenerationList.size() < generationCount) {
-				newGenerationList.add(getEvolvedSubject(getOrderSubject(), getOrderSubject()));
+				newGenerationList.add(getEvolvedSubject(getTournamentSubject(), getTournamentSubject()));
 			}
 		}
 		
@@ -182,25 +228,24 @@ public class Evolver {
 		System.out.println("Roulette error!");
 		return null;
 	}
-	
-	private Subject getOrderSubject()
+
+	//Tato funkcia simuluje turnaj
+	private Subject getTournamentSubject()
 	{
 		final Random random = new Random();
-		int max = 0;
+		int count = random.nextInt(generationCount/10)+1;
 		
-		for(int i =1;i<generationCount;i++) { max+=i;}		
+		Collections.shuffle(actualGen);
+		List<Subject> tournamentList = new ArrayList<Subject>();
 		
-		int randomIndex = random.nextInt() % max;
-		int actIndex = 0;
-		
-		for (Subject subject : actualGen) {
-			actIndex+=generationCount;
-			if(actIndex>= randomIndex)
-				return subject;
+		for(int i=0;i<count;i++)
+		{
+			tournamentList.add(actualGen.get(i));
 		}
 		
-		System.out.println("ORDER error!");
-		return null;
+		Collections.sort(tournamentList);
+		
+		return tournamentList.get(0);		
 	}
 	
 	//Vykonava crossover a mutaciu
@@ -218,15 +263,9 @@ public class Evolver {
 			
 			//Mutacia
 			if(Math.random() < mutationRate) {
-				//Toto som pouzil predtym ale riesenie naslo moc rychlo
 				Collections.shuffle(geneList);
 				newGene = geneList.get(0);
-				
-				/*if(random.nextBoolean())
-					newGene = new Gene(random.nextInt()%width, random.nextInt()%height, LEFT);
-				else
-					newGene = new Gene(random.nextInt()%width, random.nextInt()%height, RIGHT);*/
- 			}
+				 			}
 			else {		
 				//Crossover
 				if(firstSubject) {
@@ -248,17 +287,11 @@ public class Evolver {
 			
 		for(int i=0; i<generationCount; i++)
 		{
-			//final Random random = new Random();
 			Subject newSubject = new Subject();
 			Collections.shuffle(geneList); //Nahodne ich pomiesa
 			
 			for(int j =0; j<geneCount;j++)
-			{
-				/*if(random.nextBoolean())
-					newSubject.addGene(new Gene(random.nextInt()%width, random.nextInt()%height, LEFT));
-				else
-					newSubject.addGene(new Gene(random.nextInt()%width, random.nextInt()%height, RIGHT));*/
-				
+			{				
 				newSubject.addGene(geneList.get(j));
 			}
 			subjects.add(newSubject);
@@ -290,19 +323,23 @@ public class Evolver {
 		return geneList;		
 	}
 	
-	private int getFitness(Subject subject, int[][] mapInc)
+	private int getFitness(Subject subject, int[][] mapInc, boolean printResult)
 	{
 		//Smer: 0 dole, 1 hore, 2 dolava, 3 doprava
 		int direction = -1, iteration = 0;
 		int[] fitness = new int[1];
 		int[][] map = getArrayCopy(mapInc);
+		int x = 0;
+		int y = 0;
+		int returnFitness =0;
 	
 		fitness[0] = 0;	//Urobil som to tak, pretoze inak sa ta hodnota neprepisuje
 		for (Gene gene : subject.getGeneList()) {
-			int x = gene.getX();
-			int y = gene.getY();
+			x = gene.getX();
+			y = gene.getY();
 			int rotation = gene.getRotation(); //Urcuje, kam sa bude hybat ak zaboci - Vlavo alebo vpravo
 			iteration++;
+			fitness[0]=0;
 
 			if(PRINT_DEBUG)
 				System.out.println("\nStep "+iteration+" starting x: "+x+" | y: "+y);
@@ -343,27 +380,27 @@ public class Evolver {
 					break;
 				}		
 			}	
+			
+			//Vratim fitness iba ak som vysiel z mapy inak vratim 0
+			if(x<= 0 || y<=0 || y>=height-1 ||x>=width-1) {
+				returnFitness+=fitness[0];
+			}
+			else
+			{
+				map = cleanMap(map,iteration);
+			}
+
 		}		
 			
-		if(PRINT_DEBUG)
+		if(PRINT_DEBUG || printResult)
 		{
 			//Debug - vypis mapy
 			System.out.println("\nFINAL MAP: ");
-			for(int i=0;i<height;i++)
-			{
-				for(int j=0;j<width;j++)
-				{
-					if(map[i][j] == -1)
-						System.out.print("K ");
-					else
-						System.out.print(map[i][j]+" ");
-				}
-				System.out.print("\n");
-			}
+			printMap(map,width,height,false);
 			System.out.println("Fitness hodnota je "+fitness[0]);
 		}
-		
-		return fitness[0];		
+			
+		return returnFitness;	
 	}
 	
 	//Tato funkcia vracia smer, ktorym som sa pohol
@@ -433,6 +470,52 @@ public class Evolver {
 		}catch (ArrayIndexOutOfBoundsException e)
 		{
 			return NOT_FOUND;
+		}
+	}
+	
+	private int[][] cleanMap(int[][] arrayInc, int step)
+	{
+		//Debug Vypis
+		if(PRINT_DEBUG) {
+			System.out.println("CLEANING - "+step);			
+			printMap(arrayInc,width,height,false);			
+			System.out.println("AFTER");
+		}
+		
+		for(int i=0; i<arrayInc.length; i++)
+			  for(int j=0; j<arrayInc[i].length; j++)
+				  if(arrayInc[i][j] == step)
+					  arrayInc[i][j]=0;
+		
+		//Debug print
+		if(PRINT_DEBUG) {
+			printMap(arrayInc,width,height,false);			
+			System.out.println("-----------------------");
+		}
+		
+		return arrayInc;
+	}
+	
+	public void printMap(int[][] map, int width, int height, boolean useNumber) {
+		
+		for(int i=0;i<height;i++)
+		{
+			for(int j=0;j<width;j++)
+			{
+				if(map[i][j] == -1) {
+					if(useNumber)
+						System.out.print("-1 ");
+					else
+						System.out.print("K  ");
+				}
+				else {
+					if(map[i][j] < 10)
+						System.out.print(map[i][j]+"  ");
+					else
+						System.out.print(map[i][j]+" ");
+				}
+			}
+			System.out.print("\n");
 		}
 	}
 	
